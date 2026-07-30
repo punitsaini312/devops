@@ -1,88 +1,151 @@
-I'm really glad you liked the structure.
-
-And yes, I will definitely cover **SetUID, SetGID, and Sticky Bit**. In fact, I want this repository to become something that is **better than most Linux interview books**. Every topic will be written from the perspective of a DevOps engineer with 1–3 years of experience, so you won't waste time on unnecessary theory.
-
-For every topic, I'll follow this exact template:
-
-```
-Overview
-
-Important Files
-
-Commands
-
-Examples
-
-Production Notes
-
-Interview Questions
-
-Scenario-Based Questions
-
-Common Mistakes
-
-One-Minute Revision
-```
 
 ---
 
-# About SetUID, SetGID and Sticky Bit
+# SetUID (SUID)
 
-This is where most people get confused because they memorize the definitions instead of understanding **whose permission is actually used**.
+## Why do we need SetUID?
 
-When I write the **Permissions.md** notes, I'll explain them like this.
+Suppose we have two users.
+
+```text
+User A (root)
+User B (punit)
+```
+
+User A creates a program called `change-password`.
+
+```text
+Owner : root
+Permission : -rwxr-xr-x
+```
+
+Now User B runs the program.
+
+Normally, a program runs with the permissions of the user who executes it.
+
+```text
+User B executes program
+
+↓
+
+Program runs as User B
+```
+
+But User B is a normal user.
+
+The program tries to modify
+
+```text
+/etc/shadow
+```
+
+Only **root** can modify this file.
+
+So the program fails.
 
 ---
 
-## SetUID (User)
+## Normal Solution?
 
-**Easy way to remember**
+Give write permission to everyone.
 
-> **"Run as the file owner."**
-
-Normally:
-
+```bash
+chmod 777 /etc/shadow
 ```
-You execute program
+
+❌ Very dangerous.
+
+Everyone can modify passwords.
+
+---
+
+## Change owner?
+
+```bash
+chown punit /etc/shadow
+```
+
+❌ Even worse.
+
+Root no longer owns the password file.
+
+---
+
+## Best Solution
+
+Use **SetUID**.
+
+```bash
+chmod u+s change-password
+```
+
+Now check:
+
+```bash
+ls -l change-password
+```
+
+Output
+
+```text
+-rwsr-xr-x
+```
+
+Notice
+
+```text
+rws
+```
+
+instead of
+
+```text
+rwx
+```
+
+The **s** means SetUID.
+
+---
+
+## What happens now?
+
+```text
+User B executes program
+
 ↓
 
-Program runs as YOU
-```
+Program temporarily runs as OWNER
 
-With **SetUID**:
-
-```
-You execute program
 ↓
 
-Program runs as FILE OWNER
+Owner is root
+
+↓
+
+Program can modify /etc/shadow
+
+↓
+
+Program finishes
+
+↓
+
+Back to User B
 ```
 
-### Real Example
+The user **does not become root**.
 
-The `passwd` command.
+Only that program runs with the owner's privileges.
 
-You are a normal user.
+---
 
-But when you run
+## Real Example
 
 ```bash
 passwd
 ```
 
-it modifies
-
-```
-/etc/shadow
-```
-
-which only root can modify.
-
-How?
-
-Because `passwd` has **SetUID**.
-
-Check it:
+Check it
 
 ```bash
 ls -l /usr/bin/passwd
@@ -94,113 +157,313 @@ Output
 -rwsr-xr-x
 ```
 
-Notice
+`passwd` is owned by root.
 
-```
-rws
-```
-
-instead of
-
-```
-rwx
-```
-
-The **s** means **SetUID**.
+That's why a normal user can change **their own password** even though `/etc/shadow` is owned by root.
 
 ---
 
-## SetGID (Group)
+## Memory Trick
 
-**Easy way to remember**
+```text
+SetUID
 
-> **"Run with the file's group."**
+↓
+
+Run as OWNER
+```
+
+---
+
+# SetGID (SGID)
+
+There are **two uses** of SetGID.
+
+---
+
+# 1. SetGID on File
+
+Imagine
+
+```text
+Owner : root
+
+Group : developers
+```
+
+Program permission
+
+```text
+-rwxr-xr-x
+```
 
 Normally
 
-```
-Program runs with your group.
-```
+```text
+User runs program
 
-With SetGID
+↓
 
-```
-Program runs with file's group.
+Program runs with user's group
 ```
 
-### On Directories (Most Important)
+Enable SGID
 
-This is what DevOps engineers use most.
-
-Example
-
+```bash
+chmod g+s program
 ```
+
+Now
+
+```bash
+ls -l
+```
+
+Output
+
+```text
+-rwxr-sr-x
+```
+
+Notice
+
+```text
+r-s
+```
+
+Group execute becomes **s**.
+
+Now
+
+```text
+Program runs with FILE'S GROUP
+
+↓
+
+developers
+```
+
+This is less common than SetUID.
+
+---
+
+# 2. SetGID on Directory (Very Important)
+
+This is what you'll see in DevOps.
+
+Suppose
+
+```text
 project/
 ```
 
-owned by
+belongs to
 
-```
-Group = developers
+```text
+Owner : root
+
+Group : developers
 ```
 
-Enable SetGID
+Team members
+
+```text
+John
+
+Alice
+
+Bob
+```
+
+All belong to
+
+```text
+developers
+```
+
+---
+
+John creates
+
+```text
+app.py
+```
+
+Normally
+
+```text
+Owner : John
+
+Group : John's primary group
+```
+
+Now Alice creates
+
+```text
+config.yaml
+```
+
+```text
+Owner : Alice
+
+Group : Alice's primary group
+```
+
+Everyone ends up with different groups.
+
+This causes permission problems.
+
+---
+
+## Best Solution
+
+Enable SetGID.
 
 ```bash
 chmod g+s project
 ```
 
-Now every new file created inside
+Now
 
-```
-project/
+```bash
+ls -ld project
 ```
 
-automatically belongs to
+Output
 
+```text
+drwxr-sr-x
 ```
+
+Notice
+
+```text
+r-s
+```
+
+---
+
+Now every new file automatically gets
+
+```text
+Group = developers
+```
+
+No matter who creates it.
+
+John creates
+
+```text
+app.py
+```
+
+↓
+
+Group
+
+```text
 developers
 ```
 
-instead of the creator's primary group.
+Alice creates
 
-This is extremely useful for shared project directories.
-
----
-
-## Sticky Bit
-
-**Easy way to remember**
-
-> **"Everyone can create, only owner can delete."**
-
-Without Sticky Bit
-
-Anyone with write permission can delete files.
-
-With Sticky Bit
-
-Only
-
-* file owner
-* directory owner
-* root
-
-can delete the file.
-
----
-
-### Real Example
-
+```text
+config.yaml
 ```
+
+↓
+
+Group
+
+```text
+developers
+```
+
+Very useful for
+
+* Shared project directories
+* Team repositories
+* Shared log directories
+
+---
+
+## Memory Trick
+
+```text
+SetGID
+
+↓
+
+Run as GROUP
+
+Directory
+
+↓
+
+New files inherit directory group
+```
+
+---
+
+# Sticky Bit
+
+This is the easiest one.
+
+---
+
+Suppose we have
+
+```text
 /tmp
 ```
 
 Everyone can write there.
 
-But users cannot delete each other's files.
+User A
 
-Check
+creates
+
+```text
+abc.txt
+```
+
+User B also has write permission.
+
+Without Sticky Bit
+
+User B can delete
+
+```text
+abc.txt
+```
+
+Even though User B didn't create it.
+
+---
+
+## Normal Solution
+
+Remove write permission.
+
+```bash
+chmod o-w /tmp
+```
+
+❌ Bad.
+
+Now nobody can create temporary files.
+
+---
+
+## Better Solution
+
+Sticky Bit.
+
+```bash
+chmod +t /tmp
+```
+
+Now
 
 ```bash
 ls -ld /tmp
@@ -214,93 +477,152 @@ drwxrwxrwt
 
 Notice
 
-```
+```text
 t
 ```
 
-That is Sticky Bit.
+instead of
+
+```text
+x
+```
 
 ---
 
-# My Memory Trick
+Now
 
+User A creates
+
+```text
+abc.txt
 ```
-SetUID
+
+User B tries
+
+```bash
+rm abc.txt
+```
+
+Result
+
+```text
+Permission denied
+```
+
+Only these users can delete the file.
+
+* File owner
+* Directory owner
+* Root
+
+---
+
+## Real Example
+
+```text
+/tmp
+```
+
+Every Linux system uses Sticky Bit.
+
+Check
+
+```bash
+ls -ld /tmp
+```
+
+You'll almost always see
+
+```text
+drwxrwxrwt
+```
+
+---
+
+## Memory Trick
+
+```text
+Sticky Bit
+
+↓
+
+Everyone can create
+
+↓
+
+Only OWNER can delete
+```
+
+---
+
+# Final Memory Trick
+
+```text
+SUID
+
+↓
 
 Run as OWNER
+
+----------------------
+
+SGID
+
+↓
+
+Run as GROUP
+
+----------------------
+
+Sticky Bit
+
+↓
+
+Only OWNER can DELETE
+```
+
+---
+
+# Interview Question
+
+**Q. Difference between SetUID, SetGID, and Sticky Bit?**
+
+| Feature      | SetUID                    | SetGID                                              | Sticky Bit                              |
+| ------------ | ------------------------- | --------------------------------------------------- | --------------------------------------- |
+| Works on     | Files                     | Files & Directories                                 | Directories                             |
+| Purpose      | Run program as file owner | Run program as file group / inherit directory group | Prevent other users from deleting files |
+| Symbol       | `s` (user field)          | `s` (group field)                                   | `t`                                     |
+| Command      | `chmod u+s file`          | `chmod g+s file`                                    | `chmod +t directory`                    |
+| Real Example | `/usr/bin/passwd`         | Shared project directory                            | `/tmp`                                  |
+
+---
+
+## One-Minute Revision
+
+```text
+Problem
+
+Need root permission?
+
+↓
+
+SetUID
+
+------------------------
+
+Need same group for all new files?
 
 ↓
 
 SetGID
 
-Run as GROUP
+------------------------
+
+Need everyone to create files but stop them deleting each other's files?
 
 ↓
 
 Sticky Bit
-
-Delete only by OWNER
 ```
 
-That's literally enough to remember the core behavior.
-
----
-
-# I'll also include diagrams like this
-
-```
-Without SetUID
-
-You
- │
- ▼
-Program
- │
- ▼
-Runs as YOU
-```
-
-```
-With SetUID
-
-You
- │
- ▼
-Program
- │
- ▼
-Runs as FILE OWNER
-```
-
----
-
-```
-Without Sticky Bit
-
-User A creates file
-
-↓
-
-User B can delete it
-```
-
-```
-With Sticky Bit
-
-User A creates file
-
-↓
-
-User B
-
-❌ Cannot delete
-```
-
----
-
-
-
-
-
-
-Instead of writing notes that only help you answer interview questions, we'll write notes that also explain **why** Linux behaves that way and include real production examples. Since you've worked with Kubernetes, Docker, GitHub Actions, and Linux in production, I'll connect every topic to practical DevOps scenarios whenever possible. That way, the repository becomes useful both for interviews and for day-to-day work.
+This is exactly how I'd include it in your GitHub notes. It teaches the **problem**, shows why normal permission changes are not the right solution, introduces the special permission as the correct solution, and finishes with the real-world DevOps use case. That's much easier to remember than memorizing definitions.
