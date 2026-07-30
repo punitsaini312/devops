@@ -1,515 +1,604 @@
-# Linux File Permissions & Access Control
+Here is the complete content for the **Linux System Administration & DevOps Operations Reference** guide formatted as a clean Markdown document.
+
+---
+
+# Linux System Administration & DevOps Operations Reference
+
+## Table of Contents
+
+1. [Process Management](https://www.google.com/search?q=%231-process-management)
+2. [Jobs & Session Management](https://www.google.com/search?q=%232-jobs--session-management)
+3. [Log Management & Systemd Journal](https://www.google.com/search?q=%233-log-management--systemd-journal)
+4. [Task Scheduling with Cron & Crontab](https://www.google.com/search?q=%234-task-scheduling-with-cron--crontab)
+5. [Archiving, Compression & Tar Backups](https://www.google.com/search?q=%235-archiving-compression--tar-backups)
+6. [SSH Administration & Hardening](https://www.google.com/search?q=%236-ssh-administration--hardening)
+7. [Comprehensive Interview & Scenario Guide](https://www.google.com/search?q=%237-comprehensive-interview--scenario-guide)
+8. [One-Minute Cheatsheet](https://www.google.com/search?q=%238-one-minute-cheatsheet)
+
+---
+
+# 1. Process Management
 
 ## Overview
 
-Linux is a multi-user, multi-tasking operating system where security and resource isolation rely heavily on **File Permissions** and **Access Control**. Every file, directory, and process in Linux is associated with specific ownership and permissions that decide who can read, write, or execute it.
-
-As a DevOps engineer, understanding and managing file permissions is essential for:
-- Securing application configurations and sensitive secrets
-- Setting up web server roots and application storage directories
-- Managing SSH key permissions (`.ssh/config`, `authorized_keys`, private keys)
-- Configuring CI/CD pipelines and executable automation scripts
-- Hardening container environments and host volume mounts
-- Troubleshooting "Permission Denied" errors in deployments
+A process is an instance of a running program in Linux. Every process is assigned a unique **PID** (Process ID) and runs under a specific environment, user context, and priority level. DevOps engineers must manage processes to optimize application performance, debug stuck deployments, and maintain cluster node health.
 
 ---
 
-# Understanding File Permissions Structure
+## Important Process Concepts
 
-When you execute `ls -l` in a terminal, Linux displays standard file attributes:
+| Concept | Description |
+| --- | --- |
+| **PID** | Process Identification Number (Unique per process). |
+| **PPID** | Parent Process ID (The process that launched this process). |
+| **Daemon** | Background process running without user interaction (e.g., `sshd`, `dockerd`). |
+| **Zombie Process** | Terminated process whose exit code hasn't been read by its parent (`Z` state). |
+| **Orphan Process** | Process whose parent died; adopted automatically by PID 1 (`systemd` or `init`). |
+| **Nice Value** | Priority weighting ranging from `-20` (highest priority) to `19` (lowest priority). |
+
+---
+
+## Process Monitoring Commands
+
+### 1. `ps` (Process Status Snapshot)
+
+Displays static snapshots of active processes.
 
 ```bash
-ls -l /var/www/html/index.html
--rw-r--r-- 1 www-data www-data 2450 May 12 10:30 index.html
+# Standard DevOps syntax: List all processes in full-format detail
+ps -ef
+
+# BSD syntax: Show detailed resource usage (CPU, Memory, TTY, State)
+ps aux
+
+# Show process hierarchy as a tree
+ps aux --forest
+
+# Sort processes by highest CPU usage
+ps aux --sort=-%cpu | head -n 10
+
+# Sort processes by highest Memory usage
+ps aux --sort=-%mem | head -n 10
+
 ```
 
-### Breakdown of Output Fields
+### 2. Interactive Real-Time Monitors
 
-| Field | Example | Description |
-|-------|---------|-------------|
-| File Type & Permissions | `-rw-r--r--` | 10-character string representing file type and 3 permission sets |
-| Hard Link Count | `1` | Number of hard links pointing to this file |
-| Owner (User) | `www-data` | Account that owns the file |
-| Group | `www-data` | Group associated with the file |
-| File Size | `2450` | Size in bytes |
-| Modification Time | `May 12 10:30` | Date and time last modified |
-| File Name | `index.html` | Name of file or directory |
+```bash
+# Standard real-time system process monitor
+top
+
+# Interactive, user-friendly real-time process viewer
+htop
+
+# Disk I/O process monitor (requires root/sudo)
+sudo iotop
+
+```
 
 ---
 
-# Detailed Permission Bits Breakdown
+## Managing Process Execution & Signals
 
-The 10-character string (`-rw-r--r--`) breaks down into four distinct sections:
+Signals are asynchronous notifications sent by the OS or user to a process to force state changes.
+
+### Essential Signals Table
+
+| Signal | Number | Keyword | Behavior |
+| --- | --- | --- | --- |
+| **SIGHUP** | `1` | Hangup | Reload configuration without stopping the daemon. |
+| **SIGINT** | `2` | Interrupt | Gracefully stop process from terminal (`Ctrl + C`). |
+| **SIGQUIT** | `3` | Quit | Terminate process and dump core. |
+| **SIGKILL** | `9` | Kill | **Forcefully & immediately kill** process (Cannot be caught or ignored). |
+| **SIGTERM** | `15` | Terminate | Default graceful shutdown request (Allows cleanup). |
+| **SIGSTOP** | `19` | Stop | Pause process execution (`Ctrl + Z`). |
+| **SIGCONT** | `18` | Continue | Resume execution of a paused process. |
+
+### Process Signal Commands
+
+```bash
+# Gracefully terminate a process by PID
+kill 1234
+
+# Forcefully kill a runaway process by PID
+kill -9 1234
+
+# Send reload signal to Nginx master process
+sudo kill -1 $(pgrep nginx | head -n 1)
+
+# Terminate process by name
+pkill nginx
+
+# Forcefully terminate all instances of a application name
+killall -9 python3
+
+```
+
+---
+
+## Priority and Niceness
+
+Linux processes default to a niceness value of `0`. Lower niceness means higher execution priority.
+
+```bash
+# Start a CPU-intensive backup script with lowest priority (nice = 19)
+nice -n 19 ./backup.sh
+
+# Increase priority of a database process (requires sudo)
+sudo renice -n -10 -p 1234
+
+```
+
+---
+
+# 2. Jobs & Session Management
+
+## Overview
+
+In Linux shells, a **job** is a process started interactively within a terminal session. Session management tools like `tmux` prevent jobs from terminating when SSH sessions disconnect or timeout.
+
+---
+
+## Foreground vs Background Jobs
+
+```bash
+# Run a long-running process in the background by appending '&'
+python3 app.py &
+
+# Suspend current foreground process and send to background
+# Press: Ctrl + Z
+
+# Display all background jobs in current shell session
+jobs -l
+
+# Bring background job #1 into the foreground
+fg %1
+
+# Resume job #2 in the background without bringing it to foreground
+bg %2
+
+```
+
+---
+
+## Terminal Persistence with `nohup` & `disown`
+
+When an SSH session closes, a `SIGHUP` (Signal 1) is sent to all sub-processes, killing them.
+
+```bash
+# Execute script immune to hangups, redirecting logs to nohup.out
+nohup ./deploy_pipeline.sh &
+
+# Detach a running background process from current shell session
+./run_app.sh &
+disown -h %1
+
+```
+
+---
+
+## Session Persistence with `tmux`
+
+`tmux` creates a terminal multiplexer session independent of SSH connections.
+
+```bash
+# Start a new named session
+tmux new -s devops_session
+
+# Detach from current session (Inside tmux)
+# Press: Ctrl + B, then press D
+
+# List active tmux sessions
+tmux ls
+
+# Reattach to an existing session
+tmux attach -t devops_session
+
+# Kill a specific session
+tmux kill-session -t devops_session
+
+```
+
+---
+
+# 3. Log Management & Systemd Journal
+
+## Overview
+
+Log management is critical for system auditing, performance debugging, and security analysis. Modern Linux distros (Ubuntu, RHEL, Debian) use `systemd-journald` alongside `rsyslog`.
+
+---
+
+## Core Log File Directory Locations (`/var/log`)
+
+| Log File | Purpose |
+| --- | --- |
+| `/var/log/syslog` or `/var/log/messages` | Central system & operational logs. |
+| `/var/log/auth.log` or `/var/log/secure` | Authentication logs (SSH logins, sudo usage, failures). |
+| `/var/log/dmesg` | Kernel ring buffer logs (Hardware, boot errors, driver info). |
+| `/var/log/nginx/` / `/var/log/httpd/` | Web application server access and error logs. |
+
+---
+
+## Querying Logs with `journalctl`
+
+`journalctl` queries logs collected by `systemd-journald`.
+
+```bash
+# View all system logs (paginated)
+journalctl
+
+# Follow live log stream in real time (equivalent to tail -f)
+journalctl -f
+
+# View logs for a specific systemd service (e.g., Docker, Nginx)
+journalctl -u docker.service -f
+
+# View logs for current boot only
+journalctl -b
+
+# View error level logs and above (Priority 3)
+journalctl -p err..emerg
+
+# Filter logs by time window
+journalctl --since "2026-07-30 10:00:00" --until "2026-07-31 12:00:00"
+
+# Check log storage consumption
+journalctl --disk-usage
+
+# Clean logs older than 7 days
+sudo journalctl --vacuum-time=7d
+
+```
+
+---
+
+## Log Rotation with `logrotate`
+
+Logrotate prevents disks from filling up by compressing, rotating, and removing old logs automatically.
+
+* **Main Configuration File**: `/etc/logrotate.conf`
+* **Service Configurations**: `/etc/logrotate.d/`
+
+### Example Configuration: `/etc/logrotate.d/myapp`
 
 ```text
- -    r w -    r - -    r - -
- |    |---|    |---|    |---|
- |      |        |        |---> Others (world) permissions
- |      |        |------------> Group permissions
- |      |---------------------> User (owner) permissions
- |----------------------------> File Type Indicator
+/var/log/myapp/*.log {
+    daily
+    missingok
+    rotate 7
+    compress
+    delaycompress
+    notifempty
+    create 0640 appuser appuser
+    sharedscripts
+    postrotate
+        /usr/bin/systemctl reload myapp.service > /dev/null 2>&1 || true
+    endscript
+}
+
 ```
 
-### File Types Indicator (`1st Character`)
-- `-` : Regular file
-- `d` : Directory
-- `l` : Symbolic link (symlink)
-- `c` : Character device file (e.g., terminal, serial port)
-- `b` : Block device file (e.g., hard drive partition)
-- `s` : Local socket
-- `p` : Named pipe (FIFO)
-
----
-
-# Permission Types: Files vs Directories
-
-Permissions act differently depending on whether they apply to a **file** or a **directory**.
-
-| Permission | Symbol | Binary / Numeric | Effect on Files | Effect on Directories |
-|------------|--------|------------------|-----------------|-----------------------|
-| **Read** | `r` | `4` | View contents (`cat`, `less`) | List directory contents (`ls`) |
-| **Write** | `w` | `2` | Modify file contents (`vim`, `echo`) | Create, delete, or rename files within directory |
-| **Execute** | `x` | `1` | Execute script or binary (`./script.sh`) | Traverse directory (`cd` into it) |
-
-> ⚠️ **Key Note**: To read or write files inside a directory, a user **MUST** have execute (`x`) permission on that directory to traverse into it.
-
----
-
-# Numeric (Octal) Notation Reference
-
-Permissions are calculated by adding numerical values for User, Group, and Others:
-
-| Representation | Permission | Value |
-|----------------|------------|-------|
-| `r` | Read | 4 |
-| `w` | Write | 2 |
-| `x` | Execute | 1 |
-| `-` | None | 0 |
-
-### Common Octal permission modes:
-
-- `7` = `4 + 2 + 1` (`rwx`) — Full permissions
-- `6` = `4 + 2 + 0` (`rw-`) — Read & Write
-- `5` = `4 + 0 + 1` (`r-x`) — Read & Execute
-- `4` = `4 + 0 + 0` (`r--`) — Read Only
-- `0` = `0 + 0 + 0` (`---`) — No permissions
-
-### Popular Standard Permission Patterns:
-- `755` (`rwxr-xr-x`): Standard for executable scripts & web directories.
-- `644` (`rw-r--r--`): Standard for regular files (readable by all, editable by owner).
-- `700` (`rwx------`): Private directory accessible only by owner (e.g., `~/.ssh`).
-- `600` (`rw-------`): Private file accessible only by owner (e.g., `~/.ssh/id_rsa`).
-- `777` (`rwxrwxrwx`): Open to everyone (**Security risk! Avoid in production**).
-
----
-
-# Changing Ownership & Permissions Commands
-
-## `chmod` (Change Mode)
-
-Used to modify file or directory access permissions.
-
-### 1. Symbolic Mode Syntax
-
 ```bash
-chmod [who][operation][permissions] file
-```
+# Force a dry-run test of logrotate configuration
+sudo logrotate -d /etc/logrotate.d/myapp
 
-- **Who**: `u` (user/owner), `g` (group), `o` (others), `a` (all)
-- **Operation**: `+` (add), `-` (remove), `=` (set exact)
-- **Permissions**: `r`, `w`, `x`
-
-Examples:
-
-```bash
-# Grant execution rights to script owner
-chmod u+x script.sh
-
-# Remove write access from group and others
-chmod go-w application.conf
-
-# Set exact permissions: Owner full access, Group read/exec, Others none
-chmod u=rwx,g=rx,o= config.env
-
-# Grant execute permission to everyone
-chmod +x deploy.sh
-```
-
-### 2. Numeric / Octal Mode Syntax
-
-```bash
-chmod NNN file
-```
-
-Examples:
-
-```bash
-# Standard secure permission for private SSH key
-chmod 600 ~/.ssh/id_rsa
-
-# Standard permission for executable script
-chmod 755 /usr/local/bin/deploy.sh
-
-# Recursive change across entire directory tree
-chmod -R 755 /var/www/html
 ```
 
 ---
 
-## `chown` (Change Owner & Group)
+# 4. Task Scheduling with Cron & Crontab
 
-Modifies user ownership and primary group assignment.
+## Overview
 
-```bash
-# Change owner only
-sudo chown devops /var/log/app.log
-
-# Change owner and group simultaneously
-sudo chown devops:developers /var/www/html
-
-# Change group only (using colon)
-sudo chown :developers /var/www/html
-
-# Recursive ownership modification for nested directories
-sudo chown -R www-data:www-data /var/www/app
-```
+Cron is a time-based job scheduler in Unix-like operating systems. It allows tasks (backup scripts, cleanup jobs, health checks) to run automatically at specific intervals.
 
 ---
 
-## `chgrp` (Change Group)
+## Crontab Syntax Guide
 
-Used specifically to change group ownership.
-
-```bash
-# Change group ownership of a file
-chgrp developers project.tar.gz
-
-# Change group ownership recursively
-chgrp -R developers /opt/shared_data
-```
-
----
-
-# Special Permissions (SUID, SGID, Sticky Bit)
-
-Beyond basic `rwx`, Linux provides 3 special bits for elevated binary execution and group collaboration.
-
-| Special Bit | Octal Value | Symbol | Target | Effect |
-|-------------|-------------|--------|--------|--------|
-| **SUID** (Set User ID) | `4000` | `u+s` (`rws------`) | Executable Files | File runs with the privileges of the file **owner**, not the user running it. |
-| **SGID** (Set Group ID) | `2000` | `g+s` (`rwxr-s---`) | Directories & Files | Files created inside directory inherit directory's group owner, not creator's primary group. |
-| **Sticky Bit** | `1000` | `o+t` (`rwxrwxrwt`) | Directories | Users can only delete or rename their own files, even if directory is writable by all (e.g., `/tmp`). |
-
-### SUID Examples & Commands
-The `passwd` binary uses SUID so standard users can temporarily elevate to modify `/etc/shadow`.
-
-```bash
-# Set SUID on binary
-chmod u+s /usr/local/bin/custom-tool
-chmod 4755 /usr/local/bin/custom-tool
-
-# Remove SUID
-chmod u-s /usr/local/bin/custom-tool
-```
-
-### SGID Examples & Commands
-Crucial for shared group workspace directories.
-
-```bash
-# Set SGID on shared group folder
-chmod g+s /var/shared/devops
-chmod 2775 /var/shared/devops
-
-# Remove SGID
-chmod g-s /var/shared/devops
-```
-
-### Sticky Bit Examples & Commands
-Used on `/tmp` to prevent users from deleting each other's temporary files.
-
-```bash
-# Set Sticky Bit on shared directory
-chmod +t /tmp/shared_uploads
-chmod 1777 /tmp/shared_uploads
-
-# Remove Sticky Bit
-chmod -t /tmp/shared_uploads
-```
-
----
-
-# Default Permissions & `umask`
-
-When a new file or directory is created, default permissions are determined by subtracting the **`umask`** (user mask) value from base creation limits.
-
-- **Base default file permission**: `666` (`rw-rw-rw-`) — Files are not created executable by default.
-- **Base default directory permission**: `777` (`rwxrwxrwx`).
-
-### Formula:
 ```text
-Default File Permission      = 666 - umask
-Default Directory Permission = 777 - umask
+.---------------- minute (0 - 59)
+|  .------------- hour (0 - 23)
+|  |  .---------- day of month (1 - 31)
+|  |  |  .------- month (1 - 12)
+|  |  |  |  .---- day of week (0 - 6) (Sunday=0 or 7)
+|  |  |  |  |
+*  *  *  *  * command_to_execute
+
 ```
-
-### Standard `umask` Examples:
-
-| umask Value | Calculated File Permission | Calculated Directory Permission | Purpose |
-|-------------|----------------------------|---------------------------------|---------|
-| `0022` (default) | `644` (`rw-r--r--`) | `755` (`rwxr-xr-x`) | Standard user/system default |
-| `0027` | `640` (`rw-r-----`) | `750` (`rwxr-x---`) | Restrictive (no public access) |
-| `0077` | `600` (`rw-------`) | `700` (`rwx------`) | Highly secure private access |
-
-### Checking & Setting `umask`:
-
-```bash
-# Display current umask in octal
-umask
-
-# Display current umask in symbolic form
-umask -S
-
-# Set temporary umask in current shell session
-umask 0027
-```
-
-> **Permanent Configuration**: Set `umask 0027` in `/etc/profile`, `~/.bashrc`, or `/etc/bashrc`.
 
 ---
 
-# Advanced Access Control Lists (ACL)
+## Cron Operators
 
-Standard POSIX permissions only allow specifying rules for **one owner**, **one group**, and **others**.
-**ACLs** allow granting specific permissions to multiple specific users or groups.
+| Operator | Meaning | Example |
+| --- | --- | --- |
+| `*` | Any value / Every interval | `* * * * *` (Every minute) |
+| `,` | Value list separator | `0 8,12,18 * * *` (At 8:00, 12:00, and 18:00) |
+| `-` | Range of values | `0 9-17 * * *` (Hourly from 9 AM to 5 PM) |
+| `/` | Step values | `*/15 * * * *` (Every 15 minutes) |
 
-### Checking ACLs
+---
+
+## Common Schedule Examples
+
+| Cron Expression | Schedule Description |
+| --- | --- |
+| `*/5 * * * *` | Every 5 minutes |
+| `0 * * * *` | Every hour on the hour |
+| `0 2 * * *` | Daily at 2:00 AM |
+| `0 0 * * 0` | Weekly on Sunday at midnight |
+| `0 0 1 * *` | First day of every month at midnight |
+| `@reboot` | Run once at system startup |
+
+---
+
+## Crontab Management Commands
+
 ```bash
-getfacl filename
+# Edit current user's crontab file
+crontab -e
+
+# View active cron jobs for current user
+crontab -l
+
+# Remove all cron jobs for current user
+crontab -r
+
+# View cron jobs for a specific user (requires root)
+sudo crontab -u www-data -l
+
 ```
 
-Output:
+> ⚠️ **Production Best Practice**: Always specify full absolute paths for commands inside cron jobs (e.g., `/usr/bin/python3` instead of `python3`) and redirect output/errors to log files.
+
+```bash
+# Correct Production Cron Pattern
+0 3 * * * /usr/local/bin/backup.sh >> /var/log/backup.log 2>&1
+
+```
+
+---
+
+# 5. Archiving, Compression & Tar Backups
+
+## Overview
+
+`tar` (Tape Archive) bundles multiple files and directories into a single archive file, which can then be compressed using algorithms like `gzip`, `bzip2`, or `xz`.
+
+---
+
+## Tar Flag Reference
+
+| Flag | Meaning |
+| --- | --- |
+| `-c` | **Create** a new archive file. |
+| `-x` | **Extract** files from an archive. |
+| `-t` | **List** contents of an archive without extracting. |
+| `-v` | **Verbose** output (displays processed files). |
+| `-f` | Specifies target archive **filename**. |
+| `-z` | Filter through **gzip** (`.tar.gz` or `.tgz`). |
+| `-j` | Filter through **bzip2** (`.tar.bz2`). |
+| `-J` | Filter through **xz** (`.tar.xz`). |
+| `-C` | Change target **directory** before extracting. |
+| `-p` | **Preserve** file permissions and attributes. |
+
+---
+
+## Common `tar` Usage Examples
+
+```bash
+# 1. Create a compressed tar.gz archive of a directory
+tar -czvf app_backup.tar.gz /var/www/app
+
+# 2. Extract tar.gz archive to current directory
+tar -xzvf app_backup.tar.gz
+
+# 3. Extract archive into a specific destination directory
+tar -xzvf app_backup.tar.gz -C /opt/deployments/
+
+# 4. List contents of tar file without extracting
+tar -tzvf app_backup.tar.gz
+
+# 5. Create an archive excluding specific folders (e.g., node_modules, logs)
+tar --exclude='app/node_modules' --exclude='app/logs' -czvf app.tar.gz /var/www/app
+
+```
+
+---
+
+# 6. SSH Administration & Hardening
+
+## Overview
+
+Secure Shell (SSH) provides encrypted communication over insecure networks. Proper SSH configuration and key management are essential for securing server infrastructure.
+
+---
+
+## Key Files & Paths
+
+| Path | Purpose |
+| --- | --- |
+| `~/.ssh/id_rsa` | Client Private Key (**Keep strictly secure! Permissions `600**`). |
+| `~/.ssh/id_rsa.pub` | Client Public Key (Copied to remote servers). |
+| `~/.ssh/authorized_keys` | Remote server file containing authorized public keys (Permissions `600`). |
+| `~/.ssh/known_hosts` | Fingerprints of remote servers previously connected to. |
+| `~/.ssh/config` | Client-side SSH configuration file for host aliases. |
+| `/etc/ssh/sshd_config` | Server-side daemon configuration file (**Hardening location**). |
+
+---
+
+## SSH Key Management & Setup
+
+```bash
+# Generate a modern, highly secure ED25519 key pair
+ssh-keygen -t ed25519 -C "admin@company.com"
+
+# Copy public key to remote server for passwordless authentication
+ssh-copy-id -i ~/.ssh/id_ed25519.pub devops@192.168.1.50
+
+```
+
+---
+
+## Client-Side SSH Config File (`~/.ssh/config`)
+
+Avoid typing long IP addresses, ports, and key paths repeatedly by creating aliases.
+
 ```text
-# file: filename
-# owner: devops
-# group: developers
-user::rw-
-user:alice:r--
-group::r--
-mask::r--
-other::r--
+Host prod-db
+    HostName 10.0.2.15
+    User ubuntu
+    Port 2222
+    IdentityFile ~/.ssh/prod_id_ed25519
+    ServerAliveInterval 60
+
 ```
 
-### Setting ACLs (`setfacl`)
+*Usage*: Connect instantly with `ssh prod-db`
+
+---
+
+## Server Hardening Best Practices (`/etc/ssh/sshd_config`)
+
+Apply these parameters in `/etc/ssh/sshd_config` to secure production servers:
+
+```ini
+# Disable root account direct login
+PermitRootLogin no
+
+# Disable password authentication (Force SSH Key authentication only)
+PasswordAuthentication no
+
+# Change default port away from 22
+Port 2222
+
+# Restrict maximum authentication attempts to block brute-force attacks
+MaxAuthTries 3
+
+# Disable empty passwords
+PermitEmptyPasswords no
+
+# Disable X11 graphical forwarding
+X11Forwarding no
+
+# Set idle session timeout (300 seconds = 5 minutes)
+ClientAliveInterval 300
+ClientAliveCountMax 0
+
+# Limit SSH access to specific users or groups
+AllowUsers devops appadmin
+AllowGroups devops-team
+
+```
 
 ```bash
-# Grant user 'alice' read-write access to a specific file
-setfacl -m u:alice:rw application.conf
+# Validate configuration syntax before restarting daemon
+sudo sshd -t
 
-# Grant group 'auditors' read access to log directory
-setfacl -m g:auditors:rx /var/log/audit
+# Apply configuration changes
+sudo systemctl reload sshd
 
-# Grant default permissions for future new files in directory (Default ACL)
-setfacl -d -m g:developers:rwx /var/www/shared
-
-# Remove specific user ACL permission
-setfacl -x u:alice application.conf
-
-# Remove all extended ACL rules from file
-setfacl -b application.conf
 ```
 
 ---
 
-# Useful Permission Commands Quick Reference
+# 7. Comprehensive Interview & Scenario Guide
+
+### Q1: Difference between SIGKILL (9) and SIGTERM (15)?
+
+**Answer**: `SIGTERM` (15) asks a process to terminate gracefully, giving it time to release file locks, close database connections, and clear temporary files. `SIGKILL` (9) immediately terminates the process at the kernel level; the process cannot handle or ignore `SIGKILL`, which may leave temporary files or lock files behind.
+
+---
+
+### Q2: What causes a Zombie Process, and how do you resolve it?
+
+**Answer**: A zombie process (`Z` state in `ps aux`) occurs when a child process terminates, but its parent process fails to read its exit status using the `wait()` system call. Zombie processes consume no memory or CPU, only a PID table entry. You cannot kill a zombie process using `kill -9`. To resolve it, kill the parent process, causing the zombie to be adopted by PID 1 (`systemd`), which automatically reaps it.
+
+---
+
+### Q3: How do you keep a process running after closing your SSH terminal?
+
+**Answer**: Use one of the following:
+
+1. **`nohup`**: `nohup ./script.sh &` ignores `SIGHUP` signals.
+2. **`disown`**: Detaches running background jobs using `disown -h %jobid`.
+3. **`tmux`**: Run the process inside a persistent session and detach using `Ctrl + B, D`.
+4. **`systemd`**: Run the program as an underlying background system service.
+
+---
+
+### Q4: How do you tail real-time logs for a specific systemd unit?
+
+**Answer**:
 
 ```bash
-# View detailed permissions and hidden files
-ls -la
+journalctl -u nginx.service -f
 
-# Find all files with 777 permissions (Security Audit)
-find /var/www -type f -perm 0777
-
-# Find all files with SUID bit set
-find / -perm -4000 -type f 2>/dev/null
-
-# Find all files owned by specific user
-find /data -user devops
-
-# Recursively grant directory traversal (x) without making files executable
-chmod -R a+X /var/www/html
-
-# Check ACL attributes
-getfacl /etc/shadow
 ```
 
 ---
 
-# Production Best Practices
+### Q5: What permissions should be applied to SSH keys and directories?
 
-- **Principle of Least Privilege**: Never grant `777` permissions to fix issues. Diagnose whether `user`, `group`, or `path traversal (x)` is lacking.
-- **Secure SSH Keys**: Keep private key (`id_rsa`, `*.pem`) permissions strictly at `600` or `400`. SSH will reject keys with broad permissions.
-- **Shared Team Directories**: Combine `SGID` (`2770`) with a shared group so team members can automatically access files created by peers.
-- **Restrict Web Shell / File Uploads**: Web server upload directories (e.g., `/var/www/html/uploads`) should never have execution (`x`) rights.
-- **Use ACLs for Multi-Tenant Projects**: When standard owner/group structures are insufficient, use ACLs rather than granting global access.
+**Answer**:
+
+* `~/.ssh` directory: `700` (`drwx------`)
+* `~/.ssh/authorized_keys`: `600` (`-rw-------`)
+* `~/.ssh/id_rsa` (Private Key): `600` (`-rw-------`)
+* `~/.ssh/id_rsa.pub` (Public Key): `644` (`-rw-r--r--`)
 
 ---
 
-# Interview Questions
+### Q6: What happens if you forget `-f` when running `tar -czv archive.tar.gz /data`?
 
-### 1. What do the numbers `7`, `5`, and `5` mean in `chmod 755`?
-**Answer**:
-- `7` (`4+2+1`): Read, write, execute permissions for the **Owner**.
-- `5` (`4+0+1`): Read and execute permissions for the **Group**.
-- `5` (`4+0+1`): Read and execute permissions for **Others**.
+**Answer**: `tar` expects the filename immediately following the `-f` flag. If `-f` is omitted, `tar` attempts to write to standard archive devices (like magnetic tapes) or fail with argument parsing errors.
 
 ---
 
-### 2. Why does SSH fail with `WARNING: UNPROTECTED PRIVATE KEY FILE!`?
-**Answer**:
-SSH enforces strict permissions on private keys. If a private key file is readable/writable by group or others (e.g., `644`), SSH blocks connections for security. Fix it using:
+### Scenario 1: High CPU Utilization on Server
+
+**Problem**: An unknown process is causing 100% CPU usage on a production server.
+**Resolution Steps**:
+
+1. Run `htop` or `ps aux --sort=-%cpu | head -n 5` to locate the culprit process and note its PID and user.
+2. Check process origin using `ls -l /proc/<PID>/exe` and `pwdx <PID>`.
+3. Send a graceful shutdown signal: `kill -15 <PID>`.
+4. If unresponsive after 10 seconds, force-kill: `kill -9 <PID>`.
+
+---
+
+### Scenario 2: Log Partition Disk Space Emergency
+
+**Problem**: The root partition is 100% full because `/var/log` ran out of space.
+**Resolution Steps**:
+
+1. Identify large log files using `du -sh /var/log/* | sort -rh | head -n 10`.
+2. Vacuum old journalctl logs: `sudo journalctl --vacuum-size=500M`.
+3. Truncate active log files safely without breaking process handles:
 ```bash
-chmod 600 ~/.ssh/id_rsa
+sudo truncate -s 0 /var/log/app/huge_output.log
+
 ```
 
----
 
-### 3. What is the difference between `chmod -R 755` and `chmod -R a+X`?
-**Answer**:
-`chmod -R 755` applies execution permissions to **both files and directories**. `chmod -R a+X` (capital `X`) applies execution permissions **only to directories** (and files that already have execution rights set), avoiding accidentally making regular data files executable.
+4. Verify `/etc/logrotate.d/` configurations to ensure log rotation is functioning correctly.
 
 ---
 
-### 4. What is the Sticky Bit and where is it commonly used?
-**Answer**:
-The Sticky Bit (octal `1000` / `o+t`) restricts file deletion in writeable directories. Users can only delete or rename files they own. It is commonly used on world-writable directories like `/tmp` or `/var/tmp`.
+# 8. One-Minute Cheatsheet
 
----
+✓ **Processes**: View processes with `ps aux`, monitor with `htop`, kill gracefully with `kill -15 <PID>`, force kill with `kill -9 <PID>`.
 
-### 5. How does SGID work on a directory?
-**Answer**:
-When SGID (`g+s` / octal `2000`) is enabled on a directory, any new file or sub-directory created inside it automatically inherits the group ownership of the parent directory rather than the primary group of the user who created it.
+✓ **Priority**: Lower `nice` value = higher priority. Scale runs from `-20` (highest) to `19` (lowest).
 
----
+✓ **Sessions**: Suspend foreground job using `Ctrl + Z`, run in background with `bg`, bring back with `fg`. Protect long-running tasks using `nohup` or `tmux`.
 
-### 6. What is `umask` and what will default permissions be for `umask 0022`?
-**Answer**:
-`umask` defines default permission masking during file creation.
-- **Files**: `666 - 022 = 644` (`rw-r--r--`)
-- **Directories**: `777 - 022 = 755` (`rwxr-xr-x`)
+✓ **Logs**: Read systemd logs using `journalctl -u <service> -f`. Configure automatic log management via `/etc/logrotate.d/`.
 
----
+✓ **Cron**: Format: `Min Hour Day Month DayOfWeek Command`. Edit with `crontab -e`, list with `crontab -l`.
 
-### 7. What permission is required to `cd` into a directory?
-**Answer**:
-Execute (`x`) permission on the directory is required to enter or traverse into it.
+✓ **Tar**: Pack archive with `tar -czvf archive.tar.gz /path`, unpack with `tar -xzvf archive.tar.gz -C /destination`.
 
----
-
-### 8. What is the difference between standard Linux permissions and ACLs?
-**Answer**:
-Standard POSIX permissions permit setting rights for only 1 user (owner), 1 group, and others. ACLs (Access Control Lists) allow assigning specific permissions to multiple distinct users and groups on a single file or directory.
-
----
-
-### 9. What does `chmod 4755 /usr/bin/tool` do?
-**Answer**:
-It sets octal `4` in the special bit position, which enables **SUID** (`Set User ID`). The binary will run with the privileges of the file owner (usually root) regardless of who executes it.
-
----
-
-### 10. How do you grant read access to a file for user `johndoe` without changing ownership or standard group?
-**Answer**:
-Use Access Control Lists (ACL):
-```bash
-setfacl -m u:johndoe:r filename
-```
-
----
-
-# Scenario-Based Questions
-
-### Scenario 1
-A developer can read directory contents (`ls /data/project`), but receives `Permission Denied` when trying to `cd /data/project`. Why?
-
-**Answer**:
-The directory has **Read (`r`)** permission set, but lacks **Execute (`x`)** permission for the user or group. Grant execute permission:
-```bash
-chmod +x /data/project
-```
-
----
-
-### Scenario 2
-Members of the `devs` group create files in `/opt/shared`, but other members cannot edit or clean up those files because they are created with individual user group ownership. How do you fix this permanently?
-
-**Answer**:
-1. Set group ownership of the directory to `devs`:
-   ```bash
-   sudo chown :devs /opt/shared
-   ```
-2. Enable SGID on the folder so newly created files inherit the `devs` group:
-   ```bash
-   sudo chmod g+s /opt/shared
-   ```
-3. Set appropriate directory umask or default ACL:
-   ```bash
-   sudo setfacl -d -m g:devs:rwx /opt/shared
-   ```
-
----
-
-### Scenario 3
-An application service running as user `appuser` cannot read `/var/log/nginx/access.log`, which is owned by `www-data:adm`. You are not allowed to change the owner or primary group. How do you solve it?
-
-**Answer**:
-Use ACL to explicitly grant read access to `appuser`:
-```bash
-sudo setfacl -m u:appuser:r /var/log/nginx/access.log
-```
-
----
-
-### Scenario 4
-A script executed by a deployment tool fails with `Permission denied: ./deploy.sh` even though ownership is correct.
-
-**Answer**:
-The script lacks execute (`x`) permission bit. Add execute permission:
-```bash
-chmod +x deploy.sh
-```
-
----
-
-### Scenario 5
-How do you find and audit all publicly writable (`777` or `666`) files in `/var/www`?
-
-**Answer**:
-Run `find` with perm flag:
-```bash
-find /var/www -type f \( -perm -0002 -o -perm -0020 \)
-# Or exact 777:
-find /var/www -perm 0777
-```
-
----
-
-# One-Minute Revision
-
-✓ `r` = 4 (Read), `w` = 2 (Write), `x` = 1 (Execute).
-
-✓ File Permissions Order: **User (u)** → **Group (g)** → **Others (o)**.
-
-✓ Directory Execute (`x`) bit is required to `cd` into a directory.
-
-✓ `chmod` modifies access permissions; `chown` modifies owner/group.
-
-✓ `600` for SSH private keys; `755` for scripts & executable directories; `644` for normal files.
-
-✓ **SUID (`4000`)**: Runs binary as file owner.
-
-✓ **SGID (`2000`)**: New files in directory inherit directory group ownership.
-
-✓ **Sticky Bit (`1000`)**: Prevents users from deleting other users' files in shared directory (e.g. `/tmp`).
-
-✓ **Default Permissions Calculation**: `666 - umask` for files, `777 - umask` for directories.
-
-✓ Use **ACL (`getfacl` / `setfacl`)** when standard owner/group model is too restrictive.
+✓ **SSH Security**: Set `PermitRootLogin no` and `PasswordAuthentication no` in `/etc/ssh/sshd_config`. Enforce strict `600` permissions on private keys.
