@@ -222,3 +222,199 @@ It removes permissions from the defaults:
 Files start at 666, then umask removes bits.
 Directories start at 777, then umask removes bits.
 That's why it's called a mask—it masks (hides/removes) permission bits rather than granting them.
+
+====================================================================================================================================================================================================================================================================================
+
+Excellent! This is the point where most people get confused. The key is:
+
+umask is NOT normal subtraction.
+
+It removes permission bits, not arithmetic values.
+
+Let's use your example.
+
+Step 1: You ran
+umask 077
+Meaning:
+
+Owner  : 0
+Group  : 7
+Others : 7
+Now think of each digit separately.
+
+Each permission digit consists of:
+
+Read    = 4
+Write   = 2
+Execute = 1
+So:
+
+7 = 4 + 2 + 1
+  = rwx
+Therefore:
+
+umask 077
+
+Owner  -> remove nothing
+Group  -> remove rwx
+Others -> remove rwx
+Example 1: Creating a file
+Linux first creates a file with
+
+666
+
+Owner  rw-
+Group  rw-
+Others rw-
+Now apply the mask.
+
+Default file
+
+Owner   rw-
+Group   rw-
+Others  rw-
+
+umask 077
+
+Owner   remove nothing
+Group   remove rwx
+Others  remove rwx
+Result:
+
+Owner   rw-
+Group   ---
+Others  ---
+which is
+
+600
+Exactly what you got:
+
+-rw-------
+Example 2: Creating a directory
+Directories start with
+
+777
+
+Owner  rwx
+Group  rwx
+Others rwx
+Apply the mask
+
+Owner   keep rwx
+
+Group   remove rwx
+
+Others  remove rwx
+Result
+
+700
+Exactly what you got:
+
+drwx------
+Visual Table
+Files
+Default
+
+Owner   rw-
+Group   rw-
+Others  rw-
+
+umask 077
+
+Owner   keep
+Group   remove rw-
+Others  remove rw-
+
+Result
+
+Owner   rw-
+Group   ---
+Others  ---
+→ 600
+
+Directories
+Default
+
+Owner   rwx
+Group   rwx
+Others  rwx
+
+umask 077
+
+Owner   keep
+Group   remove rwx
+Others  remove rwx
+
+Result
+
+Owner   rwx
+Group   ---
+Others  ---
+→ 700
+
+Why isn't it arithmetic subtraction?
+Suppose you do
+
+umask 033
+If it were arithmetic:
+
+666 - 033 = 633
+That isn't how Linux thinks.
+
+Instead Linux removes permission bits.
+
+Default file
+
+rw- rw- rw-
+
+Mask
+
+-wx -wx
+
+Remove those permissions
+
+Result
+
+rw- r-- r--
+which is
+
+644
+So umask is really a permission mask, not a calculator.
+
+The easiest way to remember
+Imagine this conversation:
+
+Linux:
+
+"I'll create every new file as 666."
+
+umask 022:
+
+"Wait! Remove write from Group and Others."
+
+Result:
+
+644
+Linux:
+
+"I'll create every new directory as 777."
+
+umask 077:
+
+"Remove everything from Group and Others."
+
+Result:
+
+700
+A rule that DevOps engineers remember
+Never think:
+
+666 - 022
+Instead think:
+
+Default permissions
+        ↓
+Remove the bits specified by umask
+        ↓
+Final permissions
+This "remove permission bits" mental model will help you understand every umask value, including 022, 027, 002, and 077.
