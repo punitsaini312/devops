@@ -782,3 +782,26 @@ grep "/bin/bash" /etc/passwd
 ✓ Use `-aG`, never just `-G` when adding supplementary groups.
 
 ✓ Prefer `su -` over `su` when switching users.
+==================================================
+root@punit:~# adduser arpit
+root@punit:~# su - arpit
+
+arpit@punit:~$ docker image ls
+permission denied while trying to connect to the docker API at unix:///var/run/docker.sock
+
+arpit@punit:~$ exit
+logout
+
+root@punit:~# usermod -aG sudo arpit
+root@punit:~# su - arpit
+arpit@punit:~$ sudo docker image ls  (Worked)
+
+Add user to "sudo" group ("wheel" in rhel) so it can run command with sudo power
+=====================
+Second option we have.
+
+root@punit:~# usermod -aG docker arpit                (Add user to docker group so any permissions that docker have can access by user also)
+root@punit:~# su - arpit
+arpit@punit:~$ docker container ls
+CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+arpit@punit:~$
