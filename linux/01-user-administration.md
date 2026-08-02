@@ -782,8 +782,11 @@ grep "/bin/bash" /etc/passwd
 ✓ Use `-aG`, never just `-G` when adding supplementary groups.
 
 ✓ Prefer `su -` over `su` when switching users.
+
+
 ==================================================
 root@punit:~# adduser arpit
+
 root@punit:~# su - arpit
 
 arpit@punit:~$ docker image ls
