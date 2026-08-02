@@ -785,6 +785,7 @@ grep "/bin/bash" /etc/passwd
 
 
 ==================================================
+
 root@punit:~# adduser arpit
 
 root@punit:~# su - arpit
