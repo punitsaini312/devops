@@ -243,6 +243,8 @@ Root login
 
 ```bash
 sudo su -
+su - root
+su -
 ```
 
 ---
