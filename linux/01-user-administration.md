@@ -34,6 +34,9 @@ As a DevOps engineer, user administration is frequently used for:
 
 ```bash
 useradd username
+And if you don't to run command for attaching shell,set password,add group, Run
+
+adduser username
 ```
 
 Example
